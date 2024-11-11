@@ -9,7 +9,7 @@ with open(readme_path, 'r', encoding='utf-8') as f:
    long_description = f.read()
 
 setup(
-    name="h3xrecon-core",
+    name="h3xrecon_core",
     version="0.0.1",
     packages=find_packages(where='src'),  # Corrected package discovery
     package_dir={'': 'src'},  # Corrected package directory
