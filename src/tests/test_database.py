@@ -2,8 +2,8 @@ import pytest
 from datetime import datetime
 from unittest.mock import Mock, patch
 from loguru import logger
-from ..database import DatabaseManager
-from ..config import Config
+from h3xrecon_core.database import DatabaseManager
+from h3xrecon_core.config import Config
 
 pytestmark = pytest.mark.asyncio
 
