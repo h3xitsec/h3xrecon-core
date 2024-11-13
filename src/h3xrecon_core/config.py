@@ -91,25 +91,11 @@ class Config:
         """Load configuration from a JSON file."""
         with open(file, 'r') as f:
             client_config_json = json.load(f)
-        client_log_level = client_config_json.get('logs_level', 'INFO')
         client_config = {
             "nats": NatsConfig(**client_config_json.get('nats', {})),
-            "database": DatabaseConfig(**client_config_json.get('database', {}))
+            "database": DatabaseConfig(**client_config_json.get('database', {})),
+            "logging": {**client_config_json.get('logging', {})}
         }
-        logger.remove()
-        
-        # Add console handler
-        logger.add(
-            sink=lambda msg: print(msg),
-            level=client_log_level,
-        )
-        # Add file handler if configured
-        if self.logging.file_path:
-            logger.add(
-                level=client_log_level,
-                rotation="500 MB"
-            )
-        os.environ["LOGURU_LEVEL"] = client_log_level
         return client_config
 
     def _load_database_config_env(self) -> DatabaseConfig:
@@ -192,7 +178,8 @@ class Config:
             },
             'logging': {
                 'level': self.logging.level,
-                'file_path': self.logging.file_path
+                'file_path': self.logging.file_path,
+                'format': self.logging.format
             },
             'worker_execution_threshold': self.worker_execution_threshold,
             'debug_mode': self.debug_mode

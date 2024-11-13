@@ -30,7 +30,7 @@ class QueueManager:
             self.nc = NATS()
             nats_server = self.config.url
             await self.nc.connect(servers=[nats_server])
-            logger.info(f"Connected to NATS server at {nats_server}")
+            logger.debug(f"Connected to NATS server at {nats_server}")
         except Exception as e:
             logger.error(f"Failed to connect to NATS: {e}")
             raise
@@ -53,7 +53,7 @@ class QueueManager:
         try:
 
             
-            await self.nc.connect()
+            await self.ensure_connected()
             js = self.nc.jetstream()
             logger.debug('allo')
             if stream_name:
