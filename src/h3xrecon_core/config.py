@@ -66,7 +66,6 @@ class Config:
     
     def __init__(self):
         """Initialize configuration from file or environment variables."""
-
         self._load_from_env()
 
     def _load_from_env(self):
@@ -81,10 +80,6 @@ class Config:
             self.redis = self._load_redis_config_env()
             self.logging = self._load_log_config_env()
             self.client = self._load_client_config_file()
-            #client_nats = self.client.nats
-            #client_nats['url'] = f"nats://{client_nats.get('host')}:{client_nats.get('port')}"
-            #self.client.nats = client_nats
-            # Additional configurations
             self.worker_execution_threshold = int(os.getenv('H3XRECON_WORKER_THRESHOLD', '24'))
             self.debug_mode = os.getenv('H3XRECON_DEBUG', 'false').lower() == 'true'
         
@@ -96,20 +91,25 @@ class Config:
         """Load configuration from a JSON file."""
         with open(file, 'r') as f:
             client_config_json = json.load(f)
-        client_config = {}
-        client_config["nats"] = NatsConfig(
-            host=client_config_json.get('host', {}),
-            port=client_config_json.get('port', {}),
-            user=client_config_json.get('user', {}),
-            password=client_config_json.get('password', {})
+        client_log_level = client_config_json.get('logs_level', 'INFO')
+        client_config = {
+            "nats": NatsConfig(**client_config_json.get('nats', {})),
+            "database": DatabaseConfig(**client_config_json.get('database', {}))
+        }
+        logger.remove()
+        
+        # Add console handler
+        logger.add(
+            sink=lambda msg: print(msg),
+            level=client_log_level,
         )
-        client_config["database"] = DatabaseConfig(
-            host=client_config_json.get('host', {}),
-            port=client_config_json.get('port', {}),
-            database=client_config_json.get('database', {}),
-            user=client_config_json.get('user', {}),
-            password=client_config_json.get('password', {})
-        )
+        # Add file handler if configured
+        if self.logging.file_path:
+            logger.add(
+                level=client_log_level,
+                rotation="500 MB"
+            )
+        os.environ["LOGURU_LEVEL"] = client_log_level
         return client_config
 
     def _load_database_config_env(self) -> DatabaseConfig:
