@@ -66,7 +66,26 @@ class Config:
     
     def __init__(self):
         """Initialize configuration from file or environment variables."""
-        self._load_from_env()
+        try:
+            # Load client config first
+            try:
+                self.client = self._load_client_config_file()
+            except Exception as e:
+                logger.error(f"Error loading client config: {e}")
+                self.client = None
+            
+            # If client config exists, use it as base and override with env vars
+            #if self.client:
+            #    self.database = self.client['database']
+            #    self.nats = self.client['nats']
+            #    self.logging = self.client['logging']
+            
+            # Load remaining configurations from environment
+            self._load_from_env()
+            
+        except Exception as e:
+            logger.error(f"Error loading configuration: {e}")
+            raise
 
     def _load_from_env(self):
         """Load all configurations from environment variables."""
@@ -79,7 +98,6 @@ class Config:
             self.nats = self._load_nats_config_env()
             self.redis = self._load_redis_config_env()
             self.logging = self._load_log_config_env()
-            self.client = self._load_client_config_file()
             self.worker_execution_threshold = int(os.getenv('H3XRECON_WORKER_THRESHOLD', '24'))
             self.debug_mode = os.getenv('H3XRECON_DEBUG', 'false').lower() == 'true'
         
@@ -87,16 +105,28 @@ class Config:
             logger.error(f"Error loading configuration from environment: {e}")
             raise
 
-    def _load_client_config_file(self, file: str = "/home/h3x/data/projects/h3xrecon-cli/config.json"): # TODO: Make this configurable
+    def _load_client_config_file(self, file: str = None):
         """Load configuration from a JSON file."""
-        with open(file, 'r') as f:
-            client_config_json = json.load(f)
-        client_config = {
-            "nats": NatsConfig(**client_config_json.get('nats', {})),
-            "database": DatabaseConfig(**client_config_json.get('database', {})),
-            "logging": {**client_config_json.get('logging', {})}
-        }
-        return client_config
+        default_path = os.path.expanduser('~/.h3xrecon/config.json')
+        config_path = os.getenv('H3XRECON_CLIENT_CONFIG', default_path)
+        config_path = os.path.expanduser(config_path)
+        file_path = os.path.expanduser(file) if file else config_path
+        
+        try:
+            with open(file_path, 'r') as f:
+                client_config_json = json.load(f)
+            
+            return {
+                "nats": NatsConfig(**client_config_json.get('nats', {})),
+                "database": DatabaseConfig(**client_config_json.get('database', {})),
+                "logging": LogConfig(**client_config_json.get('logging', {}))
+            }
+        except FileNotFoundError:
+            logger.warning(f"Client config file not found at {file_path}")
+            return None
+        except Exception as e:
+            logger.error(f"Error loading client config: {e}")
+            return None
 
     def _load_database_config_env(self) -> DatabaseConfig:
         """Load database configuration from environment variables."""
