@@ -73,8 +73,7 @@ class Config:
             except Exception as e:
                 logger.error(f"Error loading client config: {e}")
                 self.client = None
-            
-            # If client config exists, use it as base and override with env vars
+            # If client configs exists, use it as base and override with env vars
             #if self.client:
             #    self.database = self.client['database']
             #    self.nats = self.client['nats']
@@ -82,7 +81,6 @@ class Config:
             
             # Load remaining configurations from environment
             self._load_from_env()
-            
         except Exception as e:
             logger.error(f"Error loading configuration: {e}")
             raise
