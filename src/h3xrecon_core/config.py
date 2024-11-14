@@ -57,7 +57,7 @@ class LogConfig:
     level: str
     format: str
     file_path: Optional[str] = None
-
+    
 class Config:
     """
     Central configuration management for H3XRecon.
@@ -66,68 +66,26 @@ class Config:
     
     def __init__(self):
         """Initialize configuration from file or environment variables."""
-        #load_dotenv()  # Load environment variables from .env file if it exists
-        #if os.getenv('H3XRECON_CONFIG'):
-        #    self._load_config(os.getenv('H3XRECON_CONFIG'))
-        #else:
-        self._load_from_env()
-
-    # def _load_config(self, config_path: str):
-    #     """Load configuration from a JSON file."""
-    #     try:
-    #         config_file = Path(config_path)
-
-    #         if not config_file.exists():
-    #             logger.warning(f"Config file {config_path} not found, falling back to environment variables")
-    #             return self._load_from_env()
+        try:
+            # Load client config first
+            try:
+                self.client = self._load_client_config_file()
+            except Exception as e:
+                logger.error(f"Error loading client config: {e}")
+                self.client = None
             
-    #         with open(config_file, 'r') as f:
-    #             self.config_data = json.load(f)
-    #         # Load individual configurations from file with defaults
-    #         database_config = {
-    #             'host': 'localhost',
-    #             'port': 5432,
-    #             'database': 'h3xrecon',
-    #             'user': 'postgres',
-    #             'password': '',
-    #             'min_size': 10,
-    #             'max_size': 20,
-    #             **self.config_data.get('database', {})
-    #         }
-    #         print(database_config)
-    #         nats_config = {
-    #             'host': 'localhost',
-    #             'port': 4222,
-    #             **self.config_data.get('nats', {})
-    #         }
+            # If client config exists, use it as base and override with env vars
+            #if self.client:
+            #    self.database = self.client['database']
+            #    self.nats = self.client['nats']
+            #    self.logging = self.client['logging']
             
-    #         redis_config = {
-    #             'host': 'localhost',
-    #             'port': 6379,
-    #             'db': 0,
-    #             **self.config_data.get('redis', {})
-    #         }
+            # Load remaining configurations from environment
+            self._load_from_env()
             
-    #         log_config = {
-    #             'level': 'INFO',
-    #             'format': '<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>',
-    #             **self.config_data.get('logging', {})
-    #         }
-            
-    #         # Create configuration objects with merged defaults
-    #         self.database = DatabaseConfig(**database_config)
-    #         self.nats = NatsConfig(**nats_config)
-    #         self.redis = RedisConfig(**redis_config)
-    #         self.logging = LogConfig(**log_config)
-            
-    #         # Additional configurations
-    #         self.worker_execution_threshold = self.config_data.get('worker_execution_threshold', 24)
-    #         self.debug_mode = self.config_data.get('debug_mode', False)
-            
-    #     except Exception as e:
-    #         logger.error(f"Error loading configuration from file {config_path}: {e}")
-    #         logger.info("Falling back to environment variables")
-    #         self._load_from_env()
+        except Exception as e:
+            logger.error(f"Error loading configuration: {e}")
+            raise
 
     def _load_from_env(self):
         """Load all configurations from environment variables."""
@@ -140,14 +98,35 @@ class Config:
             self.nats = self._load_nats_config_env()
             self.redis = self._load_redis_config_env()
             self.logging = self._load_log_config_env()
-            
-            # Additional configurations
             self.worker_execution_threshold = int(os.getenv('H3XRECON_WORKER_THRESHOLD', '24'))
             self.debug_mode = os.getenv('H3XRECON_DEBUG', 'false').lower() == 'true'
         
         except Exception as e:
             logger.error(f"Error loading configuration from environment: {e}")
             raise
+
+    def _load_client_config_file(self, file: str = None):
+        """Load configuration from a JSON file."""
+        default_path = os.path.expanduser('~/.h3xrecon/config.json')
+        config_path = os.getenv('H3XRECON_CLIENT_CONFIG', default_path)
+        config_path = os.path.expanduser(config_path)
+        file_path = os.path.expanduser(file) if file else config_path
+        
+        try:
+            with open(file_path, 'r') as f:
+                client_config_json = json.load(f)
+            
+            return {
+                "nats": NatsConfig(**client_config_json.get('nats', {})),
+                "database": DatabaseConfig(**client_config_json.get('database', {})),
+                "logging": LogConfig(**client_config_json.get('logging', {}))
+            }
+        except FileNotFoundError:
+            logger.warning(f"Client config file not found at {file_path}")
+            return None
+        except Exception as e:
+            logger.error(f"Error loading client config: {e}")
+            return None
 
     def _load_database_config_env(self) -> DatabaseConfig:
         """Load database configuration from environment variables."""
@@ -229,7 +208,8 @@ class Config:
             },
             'logging': {
                 'level': self.logging.level,
-                'file_path': self.logging.file_path
+                'file_path': self.logging.file_path,
+                'format': self.logging.format
             },
             'worker_execution_threshold': self.worker_execution_threshold,
             'debug_mode': self.debug_mode
