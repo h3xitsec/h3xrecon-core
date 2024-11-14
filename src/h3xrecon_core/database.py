@@ -232,19 +232,25 @@ class DatabaseManager:
             result = await self.execute_query(query)
         return await self.format_records(result)
 
-    async def add_program(self, program_name: str, scope: List = None, cidr: List = None):
-        query = """
-        INSERT INTO programs (name) VALUES ($1) RETURNING id
-        """
-        result = await self.execute_query(query, program_name)
-        program_id = result[0]['id']
+    async def add_program(self, name: str, scope: List = None, cidr: List = None):
+        if await self.get_program_id(name):
+            logger.warning(f"Program {name} already exists")
+        else:
+            query = """
+            INSERT INTO programs (name) VALUES ($1) RETURNING id
+            """
+            await self.execute_query(query, name)
+        
         if scope:
-            await self.add_program_scope(program_name, scope)
+            for s in scope:
+                result = await self.add_program_scope(name, s)
+                if result != False:
+                    logger.info(f"Added new scope {s} to program {name}")
         if cidr:
-            await self.add_program_cidr(program_name, cidr)
-        if result:
-            return True
-        return False
+            for c in cidr:
+                result = await self.add_program_cidr(name, c)
+                if result != False:
+                    logger.info(f"Added new CIDR {c} to program {name}")
 
     async def get_program_id(self, program_name: str) -> int:
         query = """
@@ -265,7 +271,8 @@ class DatabaseManager:
         SELECT cidr FROM program_cidrs WHERE program_id = (SELECT id FROM programs WHERE name = $1)
         """
         result = await self.execute_query(query, program_name)
-        return [r['cidr'] for r in result]
+        if result:
+            return [r['cidr'] for r in result]
 
     async def add_program_scope(self, program_name: str, scope: str):
         program_id = await self.get_program_id(program_name)
@@ -275,8 +282,8 @@ class DatabaseManager:
         query = """
         INSERT INTO program_scopes (program_id, regex) VALUES ($1, $2)
         """
-        await self.execute_query(query, program_id, scope)
-    
+        return await self.execute_query(query, program_id, scope)
+
     async def add_program_cidr(self, program_name: str, cidr: str):
         program_id = await self.get_program_id(program_name)
         if program_id is None:
@@ -285,7 +292,8 @@ class DatabaseManager:
         query = """
         INSERT INTO program_cidrs (program_id, cidr) VALUES ($1, $2)
         """
-        await self.execute_query(query, program_id, cidr)
+        return await self.execute_query(query, program_id, cidr)
+
 
     async def remove_program(self, program_name: str):
         """Remove a program and all its associated data"""
@@ -698,8 +706,7 @@ class DatabaseManager:
                 result = await conn.fetch(query, *args)
                 return await self.format_records(result)
         except Exception as e:
-            logger.error(f"Error executing query: {e}")
-            return []
+            return False
 
     async def remove_domain(self, program_name: str, domain: str):
         """Remove a specific domain from a program"""
