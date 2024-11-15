@@ -16,10 +16,6 @@ class QueueManager:
         logger.debug(config)
         self.nc: Optional[NATS] = None
         self.js = None
-        # if config is None:
-        #    self.config = Config().nats
-        # else:
-        #    self.config = config
         self.config = Config().nats
         logger.debug(f"NATS config: {self.config.url}")
         self._subscriptions = {}
