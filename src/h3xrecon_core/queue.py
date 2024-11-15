@@ -170,7 +170,7 @@ class QueueManager:
             stream_name (str): Name of the stream to flush
         """
         try:
-            await self.nc.connect()
+            await self.ensure_connected()
             js = self.nc.jetstream()
             
             try:
@@ -263,7 +263,7 @@ class QueueManager:
                 batch_size
             ))
             
-            logger.info(f"Subscribed to '{subject}' on stream '{stream}' with durable name '{durable_name}'")
+            logger.debug(f"Subscribed to '{subject}' on stream '{stream}' with durable name '{durable_name}'")
             
         except Exception as e:
             logger.error(f"Failed to create subscription: {e}")
@@ -318,4 +318,4 @@ class QueueManager:
         if self.nc and self.nc.is_connected:
             await self.nc.drain()
             await self.nc.close()
-            logger.info("NATS connection closed")
+            logger.debug("NATS connection closed")
