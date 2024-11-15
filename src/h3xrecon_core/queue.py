@@ -116,7 +116,6 @@ class QueueManager:
         try:
             await self.ensure_connected()
             js = self.nc.jetstream()
-            logger.debug(1)
             # Create a consumer with explicit configuration
             consumer_config = {
                 "deliver_policy": "all",  # Get all messages
@@ -124,7 +123,6 @@ class QueueManager:
                 "replay_policy": "instant",
                 "inactive_threshold": 300000000000  # 5 minutes in nanoseconds
             }
-            logger.debug(2)
             # If subject is provided, use it for subscription
             subscribe_subject = subject if subject else ">"
             
@@ -133,18 +131,13 @@ class QueueManager:
                 durable=None,
                 stream=stream_name
             )
-            logger.debug(3)
             messages = []
             try:
-                logger.debug(4)
                 # Fetch messages
                 fetched = await consumer.fetch(batch_size)
-                logger.debug(5)
                 for msg in fetched:
-                    logger.debug(6)
                     # Get stream info for message counts
                     stream_info = await js.stream_info(stream_name)
-                    
                     message_data = {
                         'subject': msg.subject,
                         'data': msg.data.decode() if msg.data else None,
