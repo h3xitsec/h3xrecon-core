@@ -55,7 +55,6 @@ class QueueManager:
             
             await self.ensure_connected()
             js = self.nc.jetstream()
-            logger.debug('allo')
             if stream_name:
                 # Get info for specific stream
                 stream = await js.stream_info(stream_name)
@@ -115,9 +114,9 @@ class QueueManager:
     async def get_stream_messages(self, stream_name: str, subject: str = None, batch_size: int = 100):
         """Get messages from a specific NATS stream"""
         try:
-            await self.nc.connect()
+            await self.ensure_connected()
             js = self.nc.jetstream()
-            
+            logger.debug(1)
             # Create a consumer with explicit configuration
             consumer_config = {
                 "deliver_policy": "all",  # Get all messages
@@ -125,7 +124,7 @@ class QueueManager:
                 "replay_policy": "instant",
                 "inactive_threshold": 300000000000  # 5 minutes in nanoseconds
             }
-            
+            logger.debug(2)
             # If subject is provided, use it for subscription
             subscribe_subject = subject if subject else ">"
             
@@ -134,12 +133,15 @@ class QueueManager:
                 durable=None,
                 stream=stream_name
             )
-            
+            logger.debug(3)
             messages = []
             try:
+                logger.debug(4)
                 # Fetch messages
                 fetched = await consumer.fetch(batch_size)
+                logger.debug(5)
                 for msg in fetched:
+                    logger.debug(6)
                     # Get stream info for message counts
                     stream_info = await js.stream_info(stream_name)
                     
