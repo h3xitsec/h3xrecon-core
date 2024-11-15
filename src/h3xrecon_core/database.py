@@ -82,7 +82,6 @@ class DatabaseManager:
                         return_data.error = "No data returned from query."
                 else:
                     result = await conn.execute(query, *args)
-                    logger.info(result)
                     return_data.success = True
                     # Optionally parse the result string if needed
                     return_data.data = result
@@ -296,6 +295,15 @@ class DatabaseManager:
         insert_result = await self._write_records(query, name)
         return insert_result
 
+    async def get_program_name(self, program_id: int) -> str:
+        query = """
+        SELECT name FROM programs WHERE id = $1
+        """
+        result = await self.execute_query(query, program_id)
+        if len(result) > 0:
+            return result[0]['name']
+        else:
+            return None
 
     async def get_program_id(self, program_name: str) -> int:
         query = """
@@ -350,11 +358,7 @@ class DatabaseManager:
         WHERE name = $1
         RETURNING id
         """
-        result = await self.execute_query(query, program_name)
-        if result:
-            logger.info(f"Program removed: {program_name}")
-            return True
-        return False
+        return await self._write_records(query, program_name)
 
     async def remove_program_scope(self, program_name: str, scope: str):
         """Remove a specific scope regex from a program"""
@@ -400,7 +404,7 @@ class DatabaseManager:
     async def get_programs(self):
         """List all reconnaissance programs"""
         query = """
-        SELECT p.name
+        SELECT p.id, p.name
         FROM programs p
         ORDER BY p.name;
         """
