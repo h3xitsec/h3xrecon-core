@@ -9,6 +9,19 @@ from loguru import logger
 from datetime import datetime
 from .config import Config
 import dateutil.parser
+from dataclasses import dataclass
+from typing import Optional, Any, TypeVar, Generic
+
+@dataclass
+class DbResult:
+    """Standardized return type for database operations"""
+    success: bool
+    data: Optional[Any] = None
+    error: Optional[str] = None
+
+    @property
+    def failed(self) -> bool:
+        return not self.success
 
 class DatabaseManager:
     def __init__(self, config: Config = None):
@@ -37,6 +50,50 @@ class DatabaseManager:
         if self.pool:
             await self.pool.close()
     
+    async def _fetch_records(self, query: str, *args):
+        """Execute a SELECT query and return the results."""
+        logger.debug(f"Executing SELECT query: {query} with args: {args}")
+        try:
+            await self.ensure_connected()
+            async with self.pool.acquire() as conn:
+                records = await conn.fetch(query, *args)
+                formatted_records = await self.format_records(records)
+            logger.debug(f"Fetched records: {formatted_records}")
+            return DbResult(success=True, data=formatted_records)
+        except Exception as e:
+            logger.error(f"Error executing query: {str(e)}")
+            return DbResult(success=False, error=str(e))
+    
+    async def _write_records(self, query: str, *args):
+        """Execute an INSERT, UPDATE, or DELETE query and return the outcome."""
+        logger.debug(f"Executing modification query: {query} with args: {args}")
+        return_data = DbResult(success=False, data=None, error=None)
+        try:
+            await self.ensure_connected()
+            async with self.pool.acquire() as conn:
+                if 'RETURNING' in query.upper():
+                    # Fetch the returned row
+                    row = await conn.fetchrow(query, *args)
+                    if row:
+                        # Assuming you want the first returned field, e.g., id
+                        return_data.success = True
+                        return_data.data = row
+                    else:
+                        return_data.error = "No data returned from query."
+                else:
+                    result = await conn.execute(query, *args)
+                    logger.info(result)
+                    return_data.success = True
+                    # Optionally parse the result string if needed
+                    return_data.data = result
+            return return_data
+        except asyncpg.UniqueViolationError:
+            return_data.exists = True
+        except Exception as e:
+            return_data.error = str(e)
+        logger.debug(f"return_data: {return_data}")
+        return return_data
+
     async def drop_program_data(self, program_name: str):
         queries = []
         program_id = await self.get_program_id(program_name)
@@ -232,26 +289,23 @@ class DatabaseManager:
             result = await self.execute_query(query)
         return await self.format_records(result)
 
-    async def add_program(self, program_name: str, scope: List = None, cidr: List = None):
-        query = """
-        INSERT INTO programs (name) VALUES ($1) RETURNING id
-        """
-        result = await self.execute_query(query, program_name)
-        program_id = result[0]['id']
-        if scope:
-            await self.add_program_scope(program_name, scope)
-        if cidr:
-            await self.add_program_cidr(program_name, cidr)
-        if result:
-            return True
-        return False
+    # Returns the program id if successful, 0 if it already exists
+    async def add_program(self, name: str) -> DbResult:
+        """Add a new program to the database"""
+        query = "INSERT INTO programs (name) VALUES ($1) RETURNING id"
+        insert_result = await self._write_records(query, name)
+        return insert_result
+
 
     async def get_program_id(self, program_name: str) -> int:
         query = """
         SELECT id FROM programs WHERE name = $1
         """
         result = await self.execute_query(query, program_name)
-        return result[0]['id']
+        if len(result) > 0:
+            return result[0]['id']
+        else:
+            return 0
     
     async def get_program_scope(self, program_name: str) -> List[str]:
         query = """
@@ -265,7 +319,8 @@ class DatabaseManager:
         SELECT cidr FROM program_cidrs WHERE program_id = (SELECT id FROM programs WHERE name = $1)
         """
         result = await self.execute_query(query, program_name)
-        return [r['cidr'] for r in result]
+        if result:
+            return [r['cidr'] for r in result]
 
     async def add_program_scope(self, program_name: str, scope: str):
         program_id = await self.get_program_id(program_name)
@@ -275,8 +330,8 @@ class DatabaseManager:
         query = """
         INSERT INTO program_scopes (program_id, regex) VALUES ($1, $2)
         """
-        await self.execute_query(query, program_id, scope)
-    
+        return await self._write_records(query, program_id, scope)
+
     async def add_program_cidr(self, program_name: str, cidr: str):
         program_id = await self.get_program_id(program_name)
         if program_id is None:
@@ -285,7 +340,8 @@ class DatabaseManager:
         query = """
         INSERT INTO program_cidrs (program_id, cidr) VALUES ($1, $2)
         """
-        await self.execute_query(query, program_id, cidr)
+        return await self._write_records(query, program_id, cidr)
+
 
     async def remove_program(self, program_name: str):
         """Remove a program and all its associated data"""
@@ -689,17 +745,25 @@ class DatabaseManager:
             logger.error(f"Error inserting/updating out-of-scope domain in database: {str(e)}")
             logger.exception(e)
     
-    async def execute_query(self, query: str, *args) -> List[Dict[str, Any]]:
+    async def execute_query(self, query: str, *args) -> Union[List[Dict[str, Any]], bool]:
         logger.debug(f"Executing query: {query} with args: {args}")
 
         await self.ensure_connected()
         try:
             async with self.pool.acquire() as conn:
-                result = await conn.fetch(query, *args)
-                return await self.format_records(result)
+                # Check if query is a SELECT query
+                if query.strip().upper().startswith('SELECT'):
+                    result = await conn.fetch(query, *args)
+                    return await self.format_records(result)
+                
+                # For INSERT, UPDATE, DELETE queries
+                result = await conn.execute(query, *args)
+                
+                # Check if the operation was successful
+                return result != '0'
         except Exception as e:
-            logger.error(f"Error executing query: {e}")
-            return []
+            logger.debug(f"Error executing query: {e}")
+            return False
 
     async def remove_domain(self, program_name: str, domain: str):
         """Remove a specific domain from a program"""
